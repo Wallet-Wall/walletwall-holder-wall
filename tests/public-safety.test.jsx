@@ -52,4 +52,24 @@ describe('Public safety: disclaimers present', () => {
     expect(body).not.toMatch(/yield execution/);
     expect(body).not.toMatch(/live execution/);
   });
+
+  // Regression guards for the wallet-cohort reframe: Holder Wall no longer
+  // models token-supply concentration, and the "Protocols" entity filter was
+  // removed upstream (protocol/contract addresses are non-navigable and the
+  // filter always resolved to an empty view). If either concept creeps back
+  // in, it means the demo has drifted from the current product model again.
+  it('does not offer a Protocol entity-type filter', () => {
+    render(<App />);
+    expect(screen.queryByText('Protocol')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^protocols?$/i })).not.toBeInTheDocument();
+  });
+
+  it('does not claim concentration as a percentage of total token supply', () => {
+    render(<App />);
+    const body = document.body.textContent.toLowerCase();
+    expect(body).not.toMatch(/% of supply/);
+    expect(body).not.toMatch(/percent of supply/);
+    expect(body).not.toMatch(/total supply/);
+    expect(body).not.toMatch(/median hold/);
+  });
 });

@@ -78,6 +78,57 @@
   margin-top: 2px;
 }
 
+.hw-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.hw-tab {
+  padding: 6px 14px;
+  background: none;
+  border: 1px solid var(--ww-charcoal-border);
+  border-radius: var(--ww-radius-control);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ww-ink-muted);
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+
+.hw-tab:hover {
+  border-color: var(--ww-accent);
+  color: var(--ww-accent);
+}
+
+.hw-tab--active {
+  background: var(--ww-card-bg);
+  border-color: var(--ww-accent);
+  color: var(--ww-accent);
+  font-weight: 700;
+}
+
+.hw-cohort-desc {
+  font-size: 11px;
+  color: var(--ww-ink-subtle);
+  line-height: 1.5;
+  margin-bottom: 12px;
+  max-width: 72ch;
+}
+
+.hw-estimate-banner {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ww-warn-dark);
+  background: rgba(201, 164, 122, 0.14);
+  border: 1px solid rgba(201, 164, 122, 0.34);
+  border-radius: var(--ww-radius-panel);
+  padding: 8px 12px;
+  margin-bottom: 14px;
+}
+
 .hw-filters {
   display: flex;
   gap: 6px;
@@ -256,13 +307,36 @@
   text-align: right;
 }
 
-.hw-lb-pct {
-  font-size: 11px;
+.hw-lb-secondary {
+  font-size: 10px;
   font-family: 'SF Mono', 'Fira Code', monospace;
-  color: var(--ww-ink-muted);
+  color: var(--ww-ink-subtle);
   flex-shrink: 0;
-  min-width: 48px;
+  min-width: 96px;
   text-align: right;
+}
+
+.hw-lb-flag {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: var(--ww-radius-badge);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.hw-lb-flag--candidate {
+  background: rgba(47, 143, 103, 0.14);
+  color: var(--ww-safe-dark);
+  border: 1px solid rgba(47, 143, 103, 0.3);
+}
+
+.hw-lb-flag--signal {
+  background: rgba(191, 78, 50, 0.1);
+  color: var(--ww-risk-dark);
+  border: 1px solid rgba(191, 78, 50, 0.28);
 }
 
 /* Detail panel */
