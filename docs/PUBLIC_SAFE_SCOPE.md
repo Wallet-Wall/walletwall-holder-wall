@@ -4,10 +4,12 @@ This document defines what is included and explicitly excluded from `walletwall-
 
 ## Included
 
-- **Holder Wall** — read-only stablecoin holder distribution map (static fixture data only)
-- KPI strip: total holders, total supply, top-10 and top-100 concentration, median hold days
-- Proportional treemap of holders sized by USD value
-- Ranked leaderboard filterable by entity type
+- **Holder Wall** — a read-only demonstration of the wallet-cohort treemap concept (static fixture data only), for vault-candidate discovery
+- Wallet cohorts: Active Wallets, Whale Wallets, Dormant Wallets — not a single token's holder list
+- KPI strip: wallets tracked, whale wallets, active wallets, top-10 concentration (relative to the currently visible cohort, not total token supply), demo snapshot date
+- Proportional treemap of wallets sized by USD value, per cohort
+- Ranked leaderboard filterable by entity type (whale, exchange, institution)
+- Vault-candidate and migration-signal flags as simple demo booleans (not the production scoring formula)
 - Public-safe UI components and brand styling
 - Synthetic, clearly labeled demo fixture data — all addresses are fake
 - Lightweight tests verifying render, fixture display, and absence of forbidden strings

@@ -1,7 +1,7 @@
 {
   "name": "@walletwall/holder-wall",
   "version": "1.0.0",
-  "description": "Holder Wall — read-only stablecoin holder distribution map. Part of the WalletWall analytics suite.",
+  "description": "Holder Wall — read-only wallet-cohort treemap demo for vault-candidate discovery. Part of the WalletWall analytics suite.",
   "private": false,
   "type": "module",
   "scripts": {

@@ -1,15 +1,28 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import fixture from './data/holder-wall.fixture.json';
 import Disclaimer from './components/Disclaimer.jsx';
 import './HolderWall.css';
 
+// Kept in sync with the WalletWall product's current Holder Wall entity
+// classifications. "protocol" was removed upstream — protocol/contract
+// addresses are non-navigable and were excluded from every cohort, so the
+// filter always resolved to an empty view. This demo never had that data
+// path to begin with, but the type list is kept aligned so it doesn't drift.
+const ENTITY_TYPES = ['all', 'whale', 'exchange', 'institution'];
+
+const ENTITY_TYPE_LABEL = {
+  all:         'All entities',
+  whale:       'Whale',
+  exchange:    'Exchange',
+  institution: 'Institution',
+};
+
 function getEntityColor(type) {
   switch (type) {
     case 'exchange':    return '#5B7EA6';
-    case 'protocol':    return '#7A6B9E';
     case 'whale':       return '#BF4E32';
     case 'institution': return '#2F8F67';
-    default:            return '#C9A47A';
+    default:            return '#C9A47A'; // unclassified wallet
   }
 }
 
@@ -18,6 +31,38 @@ function fmtUSD(v) {
   if (v >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
   if (v >= 1e3) return `$${(v / 1e3).toFixed(0)}K`;
   return `$${v}`;
+}
+
+// Rank is derived from sort order, never stored in the fixture — mirrors how
+// the real Holder Wall computes rank from the current query result rather
+// than a fixed field, so re-filtering a cohort re-ranks it honestly.
+function rankWallets(wallets) {
+  return [...wallets]
+    .sort((a, b) => b.value_usd - a.value_usd)
+    .map((w, i) => ({ ...w, rank: i + 1 }));
+}
+
+// Top 10 concentration is relative to the wallets CURRENTLY VISIBLE in this
+// cohort/filter — never a percentage of a token's total circulating supply.
+// A demo cohort of 8 wallets reporting "62% held by the top 10" would be
+// nonsensical read as "supply concentration"; read as "cohort concentration"
+// it is an honest (if small-sample) illustration of the real metric's shape.
+function top10ConcentrationPct(wallets) {
+  const values = wallets.map((w) => w.value_usd).filter((v) => v > 0).sort((a, b) => b - a);
+  const total = values.reduce((s, v) => s + v, 0);
+  if (total <= 0) return null;
+  const top10 = values.slice(0, 10).reduce((s, v) => s + v, 0);
+  return (top10 / total) * 100;
+}
+
+function walletSecondary(wallet, cohortId) {
+  if (cohortId === 'whale') {
+    return `${wallet.trades} whale trade${wallet.trades === 1 ? '' : 's'} · ${fmtUSD(wallet.value_usd)}`;
+  }
+  if (cohortId === 'dormant') {
+    return `${wallet.daysDormant}d dormant · est. balance`;
+  }
+  return `${wallet.txCount} txs · ${fmtUSD(wallet.value_usd)}`;
 }
 
 function KpiCard({ label, value, sub }) {
@@ -30,18 +75,18 @@ function KpiCard({ label, value, sub }) {
   );
 }
 
-function Treemap({ holders, selectedRank, onSelect }) {
-  const total = holders.reduce((s, h) => s + h.value_usd, 0);
+function Treemap({ wallets, selectedKey, onSelect }) {
+  const total = wallets.reduce((s, w) => s + w.value_usd, 0);
 
   return (
-    <div className="hw-treemap" aria-label="Holder distribution treemap">
-      {holders.map((holder) => {
-        const pct = (holder.value_usd / total) * 100;
-        const color = getEntityColor(holder.type);
-        const isSelected = selectedRank === holder.rank;
+    <div className="hw-treemap" aria-label="Wallet cohort treemap">
+      {wallets.map((wallet) => {
+        const pct = total > 0 ? (wallet.value_usd / total) * 100 : 0;
+        const color = getEntityColor(wallet.holderType);
+        const isSelected = selectedKey === wallet.address_demo;
         return (
           <button
-            key={holder.rank}
+            key={wallet.address_demo}
             className={`hw-tile${isSelected ? ' hw-tile--selected' : ''}`}
             style={{
               flexBasis: `${Math.max(pct * 1.5, 8)}%`,
@@ -49,27 +94,24 @@ function Treemap({ holders, selectedRank, onSelect }) {
               background: color + (isSelected ? 'EE' : '28'),
               borderColor: isSelected ? color : color + '44',
             }}
-            onClick={() => onSelect(isSelected ? null : holder.rank)}
+            onClick={() => onSelect(isSelected ? null : wallet.address_demo)}
             aria-pressed={isSelected}
-            aria-label={`${holder.label}, ${holder.pct_supply.toFixed(2)}% of supply`}
+            aria-label={`${wallet.label}, rank ${wallet.rank}`}
           >
-            <div
-              className="hw-tile__symbol"
-              style={{ color: isSelected ? '#fff' : color }}
-            >
-              {holder.rank}
+            <div className="hw-tile__symbol" style={{ color: isSelected ? '#fff' : color }}>
+              {wallet.rank}
             </div>
             <div
               className="hw-tile__label"
               style={{ color: isSelected ? 'rgba(255,255,255,0.9)' : 'rgba(30,26,20,0.7)' }}
             >
-              {holder.label}
+              {wallet.label}
             </div>
             <div
               className="hw-tile__pct"
               style={{ color: isSelected ? 'rgba(255,255,255,0.7)' : 'rgba(30,26,20,0.45)' }}
             >
-              {holder.pct_supply.toFixed(2)}%
+              {fmtUSD(wallet.value_usd)}
             </div>
           </button>
         );
@@ -79,21 +121,36 @@ function Treemap({ holders, selectedRank, onSelect }) {
 }
 
 export default function HolderWall() {
-  const [selectedRank, setSelectedRank] = useState(null);
-  const [typeFilter, setTypeFilter] = useState('all');
+  const cohorts = fixture.cohorts;
+  const [activeCohortId, setActiveCohortId] = useState(cohorts[0].id);
+  const [entityType, setEntityType] = useState('all');
+  const [selectedKey, setSelectedKey] = useState(null);
 
-  const kpis = fixture.kpis;
-  const token = fixture.token;
+  const activeCohort = cohorts.find((c) => c.id === activeCohortId) ?? cohorts[0];
 
-  const TYPES = ['all', 'exchange', 'protocol', 'whale', 'institution'];
+  const rankedWallets = useMemo(() => rankWallets(activeCohort.wallets), [activeCohort]);
 
-  const filtered = typeFilter === 'all'
-    ? fixture.holders
-    : fixture.holders.filter((h) => h.type === typeFilter);
+  const filtered = entityType === 'all'
+    ? rankedWallets
+    : rankedWallets.filter((w) => w.holderType === entityType);
 
-  const selected = selectedRank
-    ? fixture.holders.find((h) => h.rank === selectedRank)
+  const selected = selectedKey
+    ? rankedWallets.find((w) => w.address_demo === selectedKey) ?? null
     : null;
+
+  // Not deduplicated across cohorts — a wallet that shows up in both Active
+  // and Whale (see fixture note) is counted once per cohort here, matching
+  // the real Holder Wall's top-level KPI strip.
+  const totalWalletsTracked = cohorts.reduce((s, c) => s + c.wallets.length, 0);
+  const whaleCohort = cohorts.find((c) => c.id === 'whale');
+  const activeWalletsCohort = cohorts.find((c) => c.id === 'active');
+  const concentrationPct = top10ConcentrationPct(filtered);
+
+  const selectCohort = (id) => {
+    setActiveCohortId(id);
+    setEntityType('all');
+    setSelectedKey(null);
+  };
 
   return (
     <div className="hw-root" data-testid="holder-wall">
@@ -101,11 +158,11 @@ export default function HolderWall() {
         <div>
           <div className="ww-label" style={{ marginBottom: 4 }}>Holder Wall</div>
           <h1 className="hw-heading">
-            {token.symbol} Holder Distribution
-            <span className="hw-chain-badge">{token.chain}</span>
+            Wallet Cohort Explorer
+            <span className="hw-chain-badge">{fixture.network}</span>
           </h1>
           <p className="hw-subheading">
-            Read-only holder exposure map — demo fixture data only.
+            Vault-candidate discovery across scheduled wallet cohorts — not a single token's holder list.
           </p>
         </div>
       </div>
@@ -113,73 +170,79 @@ export default function HolderWall() {
       <Disclaimer />
 
       <div className="hw-kpis">
+        <KpiCard label="Wallets Tracked" value={totalWalletsTracked.toLocaleString()} />
+        <KpiCard label="Whale Wallets" value={whaleCohort.wallets.length.toLocaleString()} />
+        <KpiCard label="Active Wallets" value={activeWalletsCohort.wallets.length.toLocaleString()} />
         <KpiCard
-          label="Total Holders"
-          value={kpis.total_holders.toLocaleString()}
+          label="Top 10 Concentration"
+          value={concentrationPct == null ? '—' : `${concentrationPct.toFixed(1)}%`}
+          sub="of this cohort's USD value"
         />
-        <KpiCard
-          label="Total Supply"
-          value={fmtUSD(kpis.total_supply_usd)}
-        />
-        <KpiCard
-          label="Top 10 Hold"
-          value={`${kpis.top_10_pct_of_supply}%`}
-          sub="of supply"
-        />
-        <KpiCard
-          label="Top 100 Hold"
-          value={`${kpis.top_100_pct_of_supply}%`}
-          sub="of supply"
-        />
-        <KpiCard
-          label="Median Hold"
-          value={`${kpis.median_hold_days}d`}
-          sub="days held"
-        />
+        <KpiCard label="Snapshot" value={fixture.as_of} sub="demo snapshot, not live" />
       </div>
 
+      <div className="hw-tabs" role="tablist" aria-label="Wallet cohort">
+        {cohorts.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            role="tab"
+            aria-selected={c.id === activeCohortId}
+            className={`hw-tab${c.id === activeCohortId ? ' hw-tab--active' : ''}`}
+            onClick={() => selectCohort(c.id)}
+          >
+            {c.name}
+          </button>
+        ))}
+      </div>
+      <p className="hw-cohort-desc">{activeCohort.description}</p>
+
+      {activeCohort.id === 'dormant' && (
+        <div className="hw-estimate-banner" role="note">
+          Balances in this cohort are a proxy estimate, not a live on-chain balance.
+        </div>
+      )}
+
       <div className="hw-filters">
-        {TYPES.map((t) => (
+        {ENTITY_TYPES.map((t) => (
           <button
             key={t}
-            className={`hw-filter-btn${typeFilter === t ? ' hw-filter-btn--active' : ''}`}
-            onClick={() => { setTypeFilter(t); setSelectedRank(null); }}
-            style={typeFilter === t && t !== 'all'
+            className={`hw-filter-btn${entityType === t ? ' hw-filter-btn--active' : ''}`}
+            onClick={() => { setEntityType(t); setSelectedKey(null); }}
+            style={entityType === t && t !== 'all'
               ? { borderColor: getEntityColor(t), color: getEntityColor(t) }
               : undefined}
           >
-            {t === 'all' ? 'All entities' : t.charAt(0).toUpperCase() + t.slice(1) + 's'}
+            {ENTITY_TYPE_LABEL[t]}
           </button>
         ))}
       </div>
 
       <div className="hw-body">
         <div className="hw-main">
-          <Treemap
-            holders={filtered}
-            selectedRank={selectedRank}
-            onSelect={setSelectedRank}
-          />
+          <Treemap wallets={filtered} selectedKey={selectedKey} onSelect={setSelectedKey} />
 
           <div className="hw-leaderboard">
-            <div className="ww-label" style={{ marginBottom: 10 }}>Top Holders</div>
-            {filtered.map((holder) => (
+            <div className="ww-label" style={{ marginBottom: 10 }}>{activeCohort.name}</div>
+            {filtered.map((wallet) => (
               <button
-                key={holder.rank}
-                className={`hw-lb-row${selectedRank === holder.rank ? ' hw-lb-row--selected' : ''}`}
-                onClick={() => setSelectedRank(selectedRank === holder.rank ? null : holder.rank)}
-                aria-pressed={selectedRank === holder.rank}
+                key={wallet.address_demo}
+                className={`hw-lb-row${selectedKey === wallet.address_demo ? ' hw-lb-row--selected' : ''}`}
+                onClick={() => setSelectedKey(selectedKey === wallet.address_demo ? null : wallet.address_demo)}
+                aria-pressed={selectedKey === wallet.address_demo}
               >
-                <span className="hw-lb-rank">#{holder.rank}</span>
+                <span className="hw-lb-rank">#{wallet.rank}</span>
                 <span
                   className="hw-lb-dot"
-                  style={{ background: getEntityColor(holder.type) }}
+                  style={{ background: getEntityColor(wallet.holderType) }}
                   aria-hidden="true"
                 />
-                <span className="hw-lb-label">{holder.label}</span>
-                <span className="hw-lb-type">{holder.type}</span>
-                <span className="hw-lb-value">{fmtUSD(holder.value_usd)}</span>
-                <span className="hw-lb-pct">{holder.pct_supply.toFixed(2)}%</span>
+                <span className="hw-lb-label">{wallet.label}</span>
+                <span className="hw-lb-type">{wallet.holderType}</span>
+                <span className="hw-lb-value">{fmtUSD(wallet.value_usd)}</span>
+                <span className="hw-lb-secondary">{walletSecondary(wallet, activeCohort.id)}</span>
+                {wallet.vaultCandidate && <span className="hw-lb-flag hw-lb-flag--candidate">Vault candidate</span>}
+                {wallet.migrationSignal && <span className="hw-lb-flag hw-lb-flag--signal">Migration signal</span>}
               </button>
             ))}
           </div>
@@ -187,25 +250,32 @@ export default function HolderWall() {
 
         {selected && (
           <div className="hw-detail" data-testid="holder-detail">
-            <div className="ww-label" style={{ marginBottom: 10 }}>Holder Detail</div>
+            <div className="ww-label" style={{ marginBottom: 10 }}>Wallet Detail</div>
             <div className="hw-detail__title">{selected.label}</div>
             <div
               className="ww-badge"
               style={{
-                background: getEntityColor(selected.type) + '22',
-                color: getEntityColor(selected.type),
-                border: `1px solid ${getEntityColor(selected.type)}44`,
+                background: getEntityColor(selected.holderType) + '22',
+                color: getEntityColor(selected.holderType),
+                border: `1px solid ${getEntityColor(selected.holderType)}44`,
                 marginBottom: 16,
               }}
             >
-              {selected.type}
+              {selected.holderType}
             </div>
 
             {[
-              ['Rank',          `#${selected.rank}`],
-              ['Value (demo)',  fmtUSD(selected.value_usd)],
-              ['% of Supply',   `${selected.pct_supply.toFixed(2)}%`],
-              ['Days Held',     `${selected.hold_days}d`],
+              ['Cohort',   activeCohort.name],
+              ['Rank',     `#${selected.rank}`],
+              [
+                activeCohort.id === 'dormant' ? 'Value (estimated)' : 'Value (demo)',
+                fmtUSD(selected.value_usd),
+              ],
+              ...(activeCohort.id === 'dormant'
+                ? [['Days Dormant', `${selected.daysDormant}d`]]
+                : []),
+              ...(selected.vaultCandidate != null ? [['Vault Candidate', selected.vaultCandidate ? 'Yes' : 'No']] : []),
+              ...(selected.migrationSignal != null ? [['Migration Signal', selected.migrationSignal ? 'Yes' : 'No']] : []),
               ['Address (demo)', selected.address_demo],
             ].map(([k, v]) => (
               <div key={k} className="hw-detail__row">
@@ -214,7 +284,7 @@ export default function HolderWall() {
               </div>
             ))}
 
-            <button className="hw-detail__close" onClick={() => setSelectedRank(null)}>
+            <button className="hw-detail__close" onClick={() => setSelectedKey(null)}>
               Clear
             </button>
           </div>

@@ -1,6 +1,8 @@
 # Holder Wall
 
-Holder Wall is a read-only stablecoin holder distribution map. Inspect KPIs like total holders, supply concentration, and median hold days. Explore a proportional treemap of holders sized by USD value, filter by entity type, and click any holder for rank, value, supply percentage, and hold duration — all from a single focused surface.
+Holder Wall is a read-only demonstration of the WalletWall wallet-cohort treemap concept, built for vault-candidate discovery. Inspect wallets grouped into Active, Whale, and Dormant cohorts, see KPIs like wallets tracked and cohort-relative top-10 concentration, explore a proportional treemap sized by USD value, filter by entity type, and click any wallet for its cohort, rank, value, and vault-candidate / migration-signal flags — all from a single focused surface.
+
+This repo is a public-safe conceptual demo — part of the WalletWall org's public research and demonstration surface. It runs entirely on synthetic fixture data labeled with a demo snapshot date, not a live feed, and it is not the complete production application; see [`docs/PUBLIC_SAFE_SCOPE.md`](docs/PUBLIC_SAFE_SCOPE.md) for exactly what is and isn't in scope here.
 
 Holder Wall is part of the [WalletWall](https://walletwall.org) analytics suite.
 
@@ -19,7 +21,7 @@ Holder Wall is part of the [WalletWall](https://walletwall.org) analytics suite.
 
 ## Tech Stack
 
-- React 18 + Vite 6
+- React 19 + Vite 8
 - Static fixture data (no live API dependencies)
 - Vitest + Testing Library for tests
 
